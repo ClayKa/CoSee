@@ -414,3 +414,35 @@ This plan balances:
 - Scientific clarity (clean comparisons and ablations),
 - Practical constraints (limited compute, single author),
 - And narrative needs for the paper (quantitative tables + qualitative stories grounded in the Board).
+
+# 03.5 - Dataset requirements
+
+For the first-stage toy document / multi-image VQA experiments, the dataset must satisfy the following requirements:
+
+1. The images must primarily consist of **documents, posters, charts/tables, or multi-page screenshots**, rather than purely natural scene images.
+2. Each example must contain at least the following fields:
+   - One or more **image paths**;
+   - A natural-language **question**;
+   - A natural-language **answer** (short span or phrase is preferred).
+3. The total number of examples for the toy setting should be **controllable in the range of approximately 50–200 samples**.
+4. The total dataset size (images + annotations) should be **reasonably small** (e.g., **< 1 GB**) to support local download and server upload under limited network conditions.
+5. The dataset’s **license/terms of use must permit research usage**, and there must be no known legal or ethical restrictions that would prevent its use in an academic paper.
+
+# Dataset candidates and roles
+
+For CoSee’s first-stage experiments, we focus on text-rich visual question answering benchmarks released in the last few years. We select one **primary** dataset and two **secondary/auxiliary** datasets, each covering a different type of multi-page or multi-text visual input.
+
+1. **Primary dataset – SlideVQA (multi-page slide decks)**  
+   SlideVQA is a multi-image document VQA dataset built from slide decks. Each example consists of a **slide deck composed of multiple slide images** and a **question about the whole deck**. The dataset contains **2.6k+ slide decks, 52k+ slide images, and 14.5k questions**, and many questions require multi-hop reasoning and numerical reasoning across pages.   
+   - Role in CoSee: **main toy dataset for “multi-page document VQA”**. It directly matches our setting where multiple agents collaborate over a shared board to scan, note, and cross-check information across several text-dense pages.
+
+2. **Secondary dataset – InfoChartQA (infographic charts)**  
+   InfoChartQA is a recent benchmark for multimodal question answering on **infographic charts**. It contains **5,642 pairs of infographic and plain charts**, where each pair shares the same underlying data but differs in visual presentation (plain chart vs. design-heavy infographic).   
+   - Role in CoSee: **second dataset focusing on text-rich infographic and chart understanding**. It complements SlideVQA by testing CoSee on dense chart titles, legends, labels, and explanatory text embedded in visually complex infographics.
+
+3. **Auxiliary dataset – VQAonline (authentic community VQA)**  
+   VQAonline is an ECCV 2024 dataset built from real questions and images sourced from online Q&A communities (e.g., StackExchange), and is the first VQA dataset whose images, questions, answers, and context all come from an end-to-end authentic use case.   
+   - Many images are **screenshots, UI, diagrams, or figures** that do contain text; others are natural images with little or no text. The questions are not always explicitly about reading text, but often involve mixed semantic understanding and context.
+   - Role in CoSee: **auxiliary / future extension dataset**. We do not treat VQAonline as a primary “text-only” benchmark, but we may:
+     - Use it in discussion to situate CoSee relative to more realistic, heterogeneous VQA settings;  
+     - Optionally construct a small **text-focused subset** (e.g., filtering images with detected text and text-centric questions) as a future extension once the core experiments on SlideVQA and InfoChartQA are stable.
