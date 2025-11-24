@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 DATASETS = [
     ("slidevqa", ROOT / "data" / "slidevqa" / "annotations" / "slidevqa.jsonl"),
-    ("infochartqa", ROOT / "data" / "infochartqa" / "annotations" / "infochartqa.jsonl"),
+    ("chartqapro", ROOT / "data" / "chartqapro" / "annotations" / "chartqapro.jsonl"),
     ("vqaonline", ROOT / "data" / "vqaonline" / "annotations" / "vqaonline.jsonl"),
 ]
 

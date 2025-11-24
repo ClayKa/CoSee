@@ -446,3 +446,126 @@ For CoSee’s first-stage experiments, we focus on text-rich visual question ans
    - Role in CoSee: **auxiliary / future extension dataset**. We do not treat VQAonline as a primary “text-only” benchmark, but we may:
      - Use it in discussion to situate CoSee relative to more realistic, heterogeneous VQA settings;  
      - Optionally construct a small **text-focused subset** (e.g., filtering images with detected text and text-centric questions) as a future extension once the core experiments on SlideVQA and InfoChartQA are stable.
+
+
+## Novelty & Positioning
+
+This project sits at the intersection of three active lines of work: multi-agent VQA, blackboard-style LLM systems, and parallel / “Hogwild” inference. Our goal is not to propose yet another large-scale foundation model, but to understand how a *small* open VLM (Qwen3-VL-4B) can benefit from structured multi-agent collaboration on document-style VQA benchmarks (SlideVQA, ChartQAPro, VQAonline).
+
+We position CoSee as follows.
+
+### Relation to multi-agent VQA and tool-augmented VLMs
+
+Multi-Agent VQA (Jiang et al., 2024) introduces an adaptive multi-agent system where specialized visual agents (object detectors, counters, etc.) are orchestrated to help a powerful foundation model answer single-image VQA questions in a zero-shot setting, without fine-tuning on specific VQA datasets.  This line of work demonstrates that multiple cooperating agents can compensate for weaknesses of a monolithic model on detection and counting.
+
+Other multi-agent VQA / multimodal systems similarly focus on:
+
+* single-image VQA or small sets of images;
+* large closed models (e.g., GPT-4V / Gemini) with strong base performance;
+* loosely structured text-only exchanges between agents (chat history), rather than a page-aware workspace.
+
+By contrast, CoSee:
+
+* targets **multi-page slides and text-heavy images** (SlideVQA, VQAonline) and chart reasoning (ChartQAPro), where *locating* and *organizing* evidence across pages is a primary challenge;
+* deliberately uses a **small open-source VLM (Qwen3-VL-4B)** to study the algorithmic effect of collaboration under low-compute constraints;
+* grounds collaboration in a **structured visual board** indexed by page and (optionally) view/bbox, rather than an unstructured chat log.
+
+Our experiments are designed to answer: *when and how does a page-aware board plus simple roles (Scanner / DetailReader / CrossChecker) outperform single-agent or naive multi-agent baselines on document-style VQA?*
+
+### Relation to blackboard-style LLM multi-agent systems
+
+Recent LLM-based multi-agent systems revisit the classical **blackboard architecture**: agents with different roles post and read messages on a shared board, and a control policy selects which agent should act next. Examples include LLM-based Multi-Agent Blackboard Systems and LbMAS/bMAS variants, which show that blackboard communication can improve information discovery and reasoning in text-centric tasks and data science workflows compared to master–slave or single-agent RAG pipelines.
+
+These works, however, are:
+
+* almost entirely **text-only** (code, SQL, documentation, data lake metadata);
+* evaluated on tasks like data discovery, commonsense QA, or math word problems, without explicit visual components;
+* using blackboards as generic message buses, without explicit page/layout structure.
+
+CoSee adopts the *spirit* of blackboard architectures but instantiates a **visual, page-aware board**:
+
+* each cell is tied to a document page (and potentially a region), plus tags and author;
+* board summaries are explicitly fed back into a VLM’s multimodal prompt;
+* we measure not only answer accuracy but also board usage (e.g., how many pages are touched, which notes support the final answer).
+
+Our experiments therefore probe a different question: *how does a blackboard-style multi-agent design behave when the “world” is a multi-page visual document rather than a text corpus or data lake?*
+
+### Relation to Hogwild-style LLM inference and shared KV caches
+
+Hogwild! Inference proposes running multiple instances of the same LLM in parallel on shared hardware, synchronizing them via a **concurrently updated attention (KV) cache**, so that workers can “see” each other’s partial generations and implicitly coordinate without explicit messaging.  This line of work aims primarily at **throughput and hardware utilization** for long reasoning chains in large models (e.g., 30B+), and studies whether models can spontaneously learn collaboration strategies when given shared low-level state.
+
+CoSee is complementary:
+
+* We do **not** share internal caches; instead, we share an explicit, human-readable **board** of textual notes tied to visual pages.
+* Coordination is **symbolic and interpretable** (what note was written where, by which agent, at which step), not implicit via KV cache coupling.
+* We focus on **small-model, low-resource** settings, where the question is not how to parallelize a 200B model, but how to extract more robust behavior from a 4B VLM using structured collaboration over documents.
+
+This makes CoSee closer to “blackboard MAS for vision” than to Hogwild’s concurrent inference engine; our experiments will explicitly compare CoSee to simple *non-board* multi-agent baselines (e.g., multiple Qwen agents voting without a shared board) to isolate the effect of explicit shared state versus purely implicit or post-hoc aggregation.
+
+### Relation to document / chart VQA benchmarks
+
+On the data side, we deliberately build on **existing public benchmarks** instead of introducing yet another dataset:
+
+* **SlideVQA** provides multi-page slide decks with Q/A pairs, emphasizing navigation and reading across slides.
+* **ChartQAPro** is a recent, more diverse benchmark for chart question answering, explicitly designed to challenge VLMs on real-world charts and expose gaps in reasoning, linguistic diversity, and robustness.
+* **VQAonline** contains real-world community Q/A with associated images, many of which include text, diagrams, or UI screenshots.
+
+Our novelty is therefore **not** in dataset creation, but in:
+
+1. **Unifying these three benchmarks under a single multi-agent, board-centric framework** with a consistent Example schema and loader;
+2. **Studying board-based collaboration as an architectural “knob”** on top of a fixed small VLM across heterogeneous, text-heavy visual tasks (slides, charts, online Q/A);
+3. **Designing baselines and ablations** (single-agent vs multi-agent, with vs without board, different board truncation strategies) that directly measure the contribution of the shared visual workspace itself.
+
+In summary, while CoSee builds on ideas from multi-agent VQA, blackboard MAS, and Hogwild-style collaboration, its contribution lies in showing that a *simple, structured visual board plus lightweight agent roles* can materially change the behavior of a small open VLM on multi-page/document-style VQA—under realistic compute budgets and with interpretable intermediate artifacts that we can analyze in the experiments that follow.
+
+### Baseline sanity checks and dataset-specific notes
+
+Before designing CoSee-specific experiments, we ran small-scale sanity checks of a single-model Qwen3-VL-4B baseline on the toy subsets of each dataset. These checks confirm that the data export, model wrapper, and evaluation pipeline are functioning correctly, and they also reveal dataset-specific quirks that affect how we should interpret results.
+
+#### SlideVQA (multi-page slide decks)
+
+- Our toy export currently uses a small subset of the training split (e.g., 50 examples), where each example consists of a slide deck with up to 20 pages.
+- A manual inspection of the first exported example shows the desired behavior of the baseline pipeline:
+  - Question: “How much in dollar is the Online shopping of physical goods in India in 2013?”
+  - Gold answer: `2Bn`
+  - Qwen3-VL-4B baseline prediction: `$2Bn`
+  - After normalization (lowercasing, stripping punctuation and currency symbols), both sides are mapped to `2bn`, and are counted as exact and loose matches.
+- This confirms that:
+  - The exported `image_paths` are valid and loadable for all pages in a deck.
+  - The Qwen3-VL-4B wrapper can handle multi-image inputs for a single example.
+  - Our normalization and exact/loose matching are robust to simple formatting differences (currency symbols, capitalization).
+
+#### VQAonline (text-rich web screenshots)
+
+- VQAonline contains many examples that are essentially StackExchange-style QA rendered as screenshots:
+  - The question is often an open-ended “how/why” query.
+  - The gold answer is a long, free-form explanation, sometimes including multiple URLs and line breaks.
+- A representative example from our toy split:
+  - Question: “Export Google Scholar search for fine-grained analysis”
+  - Gold answer: a multi-sentence explanation that there is no official Google Scholar API, plus three workaround links (`scholarly`, a Nature article, and SerpAPI).
+  - Baseline prediction: `1342`, which is a prominent number appearing in the screenshot context (“Since there are 1342 papers, it is not feasible to read all of them …”).
+  - From a grading perspective, this is clearly incorrect. From a behavioral perspective, it shows that the small VLM tends to latch onto salient numbers rather than reproducing long explanatory answers.
+- This behavior highlights a mismatch between:
+  - Our current evaluation design (short, normalized answer strings with exact/loose match), and
+  - VQAonline’s many open-domain, long-form answers.
+- To avoid conflating “long-form advice generation” with the document VQA setting we care about, we will:
+  - Define a **short-answer subset** of VQAonline for quantitative evaluation (see `docs/06_data_layout.md` for the exact filtering rules).
+  - Use the full dataset primarily for qualitative analysis when we want to study failure modes on real-world web UIs and screenshots.
+
+#### ChartQAPro (chart reasoning and trend extrapolation)
+
+- ChartQAPro focuses on reasoning over charts, including trend extrapolation and numerical comparisons, and is provided only with a `test` split.
+- Our toy export draws a subset (e.g., 200 examples) from the test split and converts them into our unified schema.
+- A representative example from the toy subset:
+  - Question: “estimate the year in which wind capacity first exceeds 100 gw based on the trend shown in the chart.”
+  - Gold answer: `2037-38`
+  - Baseline prediction: `2024-25`
+  - After normalization, we compare `2037 38` vs `2024 25`; both exact and loose metrics mark this as incorrect.
+- This illustrates two important points:
+  - The small Qwen3-VL-4B baseline **does understand the answer format** (a year or year range) and attempts to follow the query, but often misestimates the critical threshold year.
+  - With strict string-based evaluation, any numerical misestimation is counted as a full error, even if the predicted range looks locally plausible.
+- For ChartQAPro, we therefore treat the baseline as intentionally weak and compute-centric:
+  - It serves as a low bar to show that vanilla small VLMs struggle with chart trend questions.
+  - CoSee’s value on this benchmark is not only in raising accuracy but also in changing **how** charts are read (e.g., which parts of the chart are inspected via board notes), which we will study qualitatively in addition to exact-match accuracy.
+
+“In early ChartQAPro experiments, a three-agent CoSee configuration (scanner, detail reader, cross-checker) does not yet improve accuracy on single instances, but it makes the model’s misperception explicit: multiple agents agree that the wind-capacity curve crosses 100 GW around 2024–25, whereas the ground truth is 2037–38.”

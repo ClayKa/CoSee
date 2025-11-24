@@ -3,3 +3,4 @@ models/
 *.bin
 *.pt
 *.onnx
+data/
