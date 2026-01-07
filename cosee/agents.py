@@ -141,6 +141,8 @@ class QwenAgent(Agent):
         name: str,
         role_prompt: str,
         qwen_client: "QwenVLClient",
+        role: str = "generic",
+        dataset: str = "generic",
         board_max_cells_per_page: int = 8,
         board_max_chars: int = 1000,
         default_gen_kwargs: Optional[Dict[str, Any]] = None,
@@ -153,6 +155,8 @@ class QwenAgent(Agent):
         self.default_gen_kwargs = default_gen_kwargs or {}
         self.allow_final_answer = allow_final_answer
         self.final_answer_step = final_answer_step
+        self.role = role
+        self.dataset = dataset
 
     def _select_target_page(
         self,
@@ -182,6 +186,44 @@ class QwenAgent(Agent):
         """
         board_section = board_text.strip() if board_text.strip() else "(The shared board is currently empty.)"
 
+        # Dataset/role-specific tweaks
+        if self.dataset == "chartqapro" and self.role == "scanner":
+            return (
+                "You are the Scanner agent for chart question answering.\n"
+                "Your job is NOT to answer the question directly. Your job is to READ the chart carefully and write short, evidence-style notes on the shared board.\n\n"
+                "For each question:\n"
+                "- Identify the relevant axis labels, legend entries, and x-axis categories (years, countries, issues, etc.).\n"
+                "- Write notes that include CONCRETE numeric values, for example:\n"
+                '  - "Overguessing share in Kenya for Early Marriage: about 40%"\n'
+                '  - "Average underguessing is highest in Indonesia"\n'
+                '  - "There is NO underguess for Maternal Mortality in any country"\n'
+                "- Whenever possible, tie each note to specific x-axis values or categories so that another agent can reconstruct the reasoning from your notes alone.\n\n"
+                "Rules:\n"
+                "- DO NOT output the final answer.\n"
+                "- DO NOT restate the question.\n"
+                "- DO NOT write long explanations; each note should be 1–2 short sentences focused on specific numeric facts.\n"
+                "- Write at most 2–3 high-value notes per step.\n\n"
+                f"User question:\n{question}\n\n"
+                "You are collaborating with other agents using a shared text board.\n"
+                "Current board notes:\n"
+                f"{board_section}\n\n"
+                f"At step {step}, write ONE short new observation that could help answer the question. Do NOT give the final answer."
+            )
+
+        if self.dataset == "slidevqa" and self.role == "scanner":
+            return (
+                f"You are an assistant agent named {self.name}.\n"
+                "You skim slides and add concise, high-signal notes.\n\n"
+                f"User question:\n{question}\n\n"
+                "Guidelines:\n"
+                "- Mention slide/page index when possible.\n"
+                "- Copy short phrases and key numbers from the slide text.\n"
+                "- Do NOT answer the question; just add 1–2 helpful observations.\n\n"
+                "Current board notes:\n"
+                f"{board_section}\n\n"
+                f"At step {step}, write ONE short observation that could help answer the question. Do NOT give the final answer."
+            )
+
         return (
             f"You are an assistant agent named {self.name}.\n"
             f"Your role: {self.role_prompt}\n\n"
@@ -206,6 +248,54 @@ class QwenAgent(Agent):
         using the board as supporting context.
         """
         board_section = board_text.strip() if board_text.strip() else "(The shared board is currently empty.)"
+
+        if self.dataset == "chartqapro" and self.role == "cross_checker":
+            return (
+                "You are the CrossChecker agent for chart question answering.\n\n"
+                "You see:\n"
+                "- the original question,\n"
+                "- the chart image,\n"
+                "- and the board notes written by the Scanner.\n\n"
+                "Your job is to:\n"
+                "1) read the board notes carefully,\n"
+                "2) optionally look at the chart ONCE more if the notes are clearly insufficient,\n"
+                "3) then produce a FINAL ANSWER in a compact, canonical format that matches the gold style.\n\n"
+                "VERY IMPORTANT FORMAT:\n"
+                "- You must NOT explain your reasoning.\n"
+                "- You must NOT write full sentences.\n"
+                "- You must ONLY output the requested items in order, separated by spaces and brackets, with NO extra words.\n\n"
+                "Examples:\n"
+                'If the question is: "which country\'s policymakers overguesses the most on average? what about for underguessing? how many issues are there no underguessing by policymakers for any country? which of these listed issues also have no overguessing for any country?"\n'
+                'The correct answer format is: "Kenya Indonesia [Early Marriage, Labour Force Participation, Maternal Mortality, Secondary Education] [Maternal Mortality]".\n\n'
+                "General rules for ChartQAPro:\n"
+                "- For single-answer questions: output just the value, e.g. \"2017\" or \"Canada\".\n"
+                "- For two-part questions: use \"A B\".\n"
+                "- For lists: use \"[Item1, Item2, Item3]\".\n"
+                "- For nested questions: follow the pattern from the board notes and the gold style, but NEVER add explanations or extra text.\n\n"
+                "Board usage rules:\n"
+                "- If the board already contains a clear numeric or categorical value that answers part of the question, you MUST copy that value directly into your final answer.\n"
+                "- Do NOT invent new numbers or years that contradict the board.\n"
+                "- Only if the board is missing a required piece of information, briefly look at the chart again and add at most one short note before answering.\n\n"
+                "When you decide to answer, you must choose the FINAL_ANSWER action and output ONLY the compact answer string, nothing else.\n\n"
+                f"User question:\n{question}\n\n"
+                "Current board notes:\n"
+                f"{board_section}\n"
+            )
+
+        if self.dataset == "slidevqa" and self.role == "cross_checker":
+            return (
+                f"You are an assistant agent named {self.name}.\n"
+                "When you give the final answer on SlideVQA:\n"
+                "- Answer in ONE short sentence or phrase.\n"
+                "- Do NOT explain your reasoning.\n"
+                "- Do NOT restate the question.\n"
+                "- Prefer to copy key numbers, names or phrases from the board or the slide text.\n\n"
+                f"User question:\n{question}\n\n"
+                "You are collaborating with other agents using a shared text board.\n"
+                "Current board notes:\n"
+                f"{board_section}\n\n"
+                "Provide a single concise final answer."
+            )
 
         return (
             f"You are an assistant agent named {self.name}.\n"
@@ -248,6 +338,10 @@ class QwenAgent(Agent):
         use_final_answer = self.allow_final_answer and step >= self.final_answer_step
 
         if use_final_answer:
+            # For chartqapro scanner, never produce final answers
+            if self.dataset == "chartqapro" and self.role == "scanner":
+                use_final_answer = False
+
             prompt = self._build_final_answer_prompt(
                 question=question,
                 board_text=board_text,

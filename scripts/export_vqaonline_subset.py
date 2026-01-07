@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from huggingface_hub import hf_hub_download, snapshot_download
+from tqdm.auto import tqdm
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -44,17 +45,23 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_split(split: str) -> Tuple[List[Dict[str, Any]], str]:
+    # HF repo uses "val.json" not "validation.json"; handle alias.
+    filename = f"{split}.json"
+    if split == "validation":
+        filename = "val.json"
+
     snapshot_path = snapshot_download(
         repo_id=REPO_ID,
         repo_type="dataset",
         cache_dir=str(RAW_DIR),
-        allow_patterns=[f"{split}.json"],
+        allow_patterns=[filename],
     )
-    json_path = Path(snapshot_path) / f"{split}.json"
+    json_path = Path(snapshot_path) / filename
     if not json_path.exists():
         raise FileNotFoundError(f"Missing JSON for split {split}: {json_path}")
     with json_path.open("r", encoding="utf-8") as f:
         data = json.load(f)
+    print(f"Loaded split '{split}' with {len(data)} entries.")
     return data, split
 
 
@@ -102,15 +109,18 @@ def main() -> None:
         data, orig_split = load_split(split)
         all_examples.extend((entry, orig_split) for entry in data)
 
+    print(f"Merged {len(all_examples)} total examples from splits {args.splits}.")
     if args.max_examples > 0 and len(all_examples) > args.max_examples:
         rng.shuffle(all_examples)
         all_examples = all_examples[: args.max_examples]
+        print(f"After sampling with max_examples={args.max_examples}, kept {len(all_examples)} examples.")
 
     img_cache: Dict[str, str] = {}
     num_written = 0
 
     with OUT_VQAONLINE_JSONL.open("w", encoding="utf-8") as fout:
-        for entry, orig_split in all_examples:
+        print(f"Exporting {len(all_examples)} examples (after sampling/merging splits).")
+        for entry, orig_split in tqdm(all_examples, desc="Exporting VQAonline examples"):
             image_name = entry.get("image")
             if not image_name:
                 continue

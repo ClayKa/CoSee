@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from datasets import load_dataset
+from tqdm.auto import tqdm
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -71,27 +72,48 @@ def main() -> None:
         split=args.split,
         cache_dir=str(ROOT / "data" / "hf_cache" / "slidevqa"),
     )
+    page_cols = [f"page_{i}" for i in range(1, 21)]
+    ds_meta = ds.remove_columns(page_cols)
 
-    decks: Dict[str, List[dict]] = {}
-    for ex in ds:
-        decks.setdefault(ex["deck_name"], []).append(ex)
+    decks: Dict[str, List[int]] = {}
+    deck_names_column = ds["deck_name"]
+    for idx, deck_name in enumerate(deck_names_column):
+        decks.setdefault(deck_name, []).append(idx)
+    print(f"Found {len(decks)} decks in split '{args.split}'.")
 
     deck_names = sorted(decks.keys())
     rng.shuffle(deck_names)
     selected_decks = deck_names[: args.num_decks]
 
     saved_pages: set = set()
+    saved_page_paths_per_deck: Dict[str, List[str]] = {}
     exported = 0
     ann_path = ann_root / "slidevqa_200deck_allq.jsonl"
 
+    total_qas = 0
+    for deck_name in selected_decks:
+        deck_indices = decks[deck_name]
+        if args.questions_per_deck > 0 and len(deck_indices) > args.questions_per_deck:
+            total_qas += args.questions_per_deck
+        else:
+            total_qas += len(deck_indices)
+
+    print(f"Selected {len(selected_decks)} decks, planning to export ~{total_qas} QA pairs.")
+    pbar = tqdm(total=total_qas, desc="Exporting SlideVQA examples")
     with ann_path.open("w", encoding="utf-8") as fout:
         for deck_name in selected_decks:
-            qa_list = decks[deck_name]
-            if args.questions_per_deck > 0 and len(qa_list) > args.questions_per_deck:
-                qa_list = rng.sample(qa_list, args.questions_per_deck)
+            qa_indices = decks[deck_name]
+            if args.questions_per_deck > 0 and len(qa_indices) > args.questions_per_deck:
+                qa_indices = rng.sample(qa_indices, args.questions_per_deck)
 
-            for qa in qa_list:
-                pages = save_pages_for_deck(deck_name, qa, img_root, saved_pages)
+            if deck_name not in saved_page_paths_per_deck:
+                first_qa = ds[qa_indices[0]]
+                saved_paths = save_pages_for_deck(deck_name, first_qa, img_root, saved_pages)
+                saved_page_paths_per_deck[deck_name] = saved_paths
+
+            for qa_idx in qa_indices:
+                qa = ds_meta[qa_idx]
+                pages = saved_page_paths_per_deck.get(deck_name, [])
                 if not pages:
                     continue
 
@@ -113,6 +135,8 @@ def main() -> None:
 
                 fout.write(json.dumps(record, ensure_ascii=False) + "\n")
                 exported += 1
+                pbar.update(1)
+    pbar.close()
 
     print(f"Wrote {exported} examples to {ann_path}")
     print(f"Saved {len(saved_pages)} unique pages under {img_root}")

@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 from datasets import load_dataset
 from PIL import Image
+from tqdm.auto import tqdm
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -98,12 +99,13 @@ def main() -> None:
         indices = indices[: args.max_examples]
 
     selected = [ds[i] for i in indices]
+    print(f"Exporting {len(selected)} examples (after sampling).")
 
     saved_images: Dict[str, str] = {}
     num_written = 0
 
     with ann_path.open("w", encoding="utf-8") as fout:
-        for idx, ex in enumerate(selected):
+        for idx, ex in enumerate(tqdm(selected, desc="Exporting ChartQAPro examples")):
             chart_id = str(ex.get("id", f"chart_{idx:06d}") or f"chart_{idx:06d}")
             chart_id = chart_id.replace("/", "_").replace("\\", "_")
 

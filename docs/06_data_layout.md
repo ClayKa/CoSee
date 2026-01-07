@@ -70,6 +70,8 @@ Conventions:
   * `image_paths` contains one entry: the local chart image.
   * `question` / `answer` are taken directly from the dataset.
   * Additional fields (e.g., question_type, chart_type, source, task_type) are stored in `meta`.
+  * Evaluation: we report both overall exact/loose accuracy (all examples) and answerable-only accuracy
+    (excluding cases whose gold answer is the literal `"Unanswerable"`). The dataset itself is unchanged; the split is applied only at evaluation time.
 
 ### VQAonline
 
@@ -97,6 +99,13 @@ Each JSONL line has:
   }
 }
 ```
+
+For evaluation:
+
+- **SlideVQA / ChartQAPro**: exact/loose are string-based (normalized equality and relaxed overlap).
+- **VQAonline**: exact/loose are defined via token-level F1 on long answers:
+  - exact = F1 >= 0.5
+  - loose = F1 >= 0.3
 
 * **VQAonline**
   VQAonline provides real community questions, images, long answers, and textual context.

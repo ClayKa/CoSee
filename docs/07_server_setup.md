@@ -91,6 +91,69 @@ Reload your shell:
 source ~/.bashrc
 ```
 
+## 8. Running multi-shard jobs in a single process
+
+You can process all logical shards sequentially with one model load using `--run-all-shards`:
+
+```bash
+# SlideVQA baseline on 200 examples, 4 shards processed sequentially
+python -m scripts.run_qwen_single_baseline \
+  --dataset slidevqa \
+  --split train \
+  --max-examples 200 \
+  --num-shards 4 \
+  --run-all-shards \
+  --max-new-tokens 32 \
+  --device cuda
+```
+
+Similarly for CoSee multi-agent:
+
+```bash
+python -m scripts.run_cosee_on_dataset \
+  --dataset slidevqa \
+  --split train \
+  --max-examples 200 \
+  --num-shards 4 \
+  --run-all-shards \
+  --agent-config two_qwen \
+  --device cuda
+```
+
+The scripts reuse a single `QwenVLClient` load across shards and print progress every few examples. `--run-all-shards` can be combined with resume flags to continue partial runs without reloading the model.
+
+For VQAonline baseline (long-form answers), increase the generation budget:
+
+```bash
+python -m scripts.run_qwen_single_baseline \
+  --dataset vqaonline \
+  --split trainval \
+  --max-examples 800 \
+  --num-shards 8 \
+  --run-all-shards \
+  --max-new-tokens 48 \
+  --device cuda
+```
+
+Quick sanity check on a smaller subset:
+
+```bash
+python -m scripts.run_qwen_single_baseline \
+  --dataset vqaonline \
+  --split trainval \
+  --max-examples 100 \
+  --num-shards 4 \
+  --run-all-shards \
+  --max-new-tokens 48 \
+  --device cuda
+
+python -m scripts.aggregate_results \
+  --mode baseline \
+  --dataset vqaonline \
+  --split trainval \
+  --inputs results/baseline_qwen_single_vqaonline_trainval.jsonl
+```
+
 ---
 
 ## 3. Conda Environment and Python Dependencies
