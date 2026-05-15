@@ -2,7 +2,7 @@
 
 CoSee is a research prototype for studying shared-state collaboration in resource-constrained visual agents. The code implements a small multimodal collaboration loop where role-specialized agents write evidence notes to a shared Board before producing an answer.
 
-The repository is aligned with the paper direction, **Diagnosing Failure Modes of Shared-State Collaboration in Resource-Constrained Visual Agents**, and focuses on auditable intermediate state, bounded generation calls, and reproducible JSONL experiment logs.
+The repository is aligned with the paper direction, **Diagnosing Failure Modes of Shared-State Collaboration in Resource-Constrained Visual Agents**, and focuses on auditable intermediate state, bounded generation calls, and structured JSONL experiment logs.
 
 ## Current Status
 
@@ -60,7 +60,7 @@ data/
     annotations/vqaonline.jsonl
 ```
 
-Each JSONL row follows this schema:
+Each JSONL row follows this schema. `image_paths` entries are relative to the repository root:
 
 ```json
 {
@@ -82,7 +82,7 @@ python -m scripts.export_slidevqa_toy
 python -m scripts.export_vqaonline_toy
 ```
 
-Some exporters download from Hugging Face and require network access plus the `datasets` or `huggingface_hub` packages.
+These exporters may download from Hugging Face and require network access plus the `datasets` or `huggingface_hub` packages.
 
 ## Model Setup
 
@@ -93,6 +93,34 @@ export COSEE_MODEL_PATH=/path/to/Qwen3-VL-4B-Instruct
 ```
 
 You can also pass `--model-path` directly to the run scripts.
+
+## Minimal Real Run
+
+For a real model-backed run, the order is:
+
+1. Export one normalized dataset:
+
+   ```bash
+   python -m scripts.export_chartqapro_toy
+   ```
+
+2. Point CoSee at a local Qwen VL checkpoint:
+
+   ```bash
+   export COSEE_MODEL_PATH=/path/to/Qwen3-VL-4B-Instruct
+   ```
+
+3. Run a small experiment:
+
+   ```bash
+   python -m scripts.run_cosee_on_dataset \
+     --dataset chartqapro \
+     --split test \
+     --agent-config two_qwen \
+     --max-examples 5 \
+     --device cuda \
+     --log-compute
+   ```
 
 ## Running Experiments
 
