@@ -11,7 +11,7 @@ from typing import Any, Dict, List
 from PIL import Image
 import torch
 
-from cosee.data.datasets import load_toy_split
+from cosee.data.datasets import ROOT, load_toy_split
 from cosee.models.qwen_vl_wrapper import QwenVLClient
 from cosee.metrics import compute_vqaonline_f1
 
@@ -174,7 +174,7 @@ def build_input_text_for_example(ex, max_context_chars: int = 1500) -> str:
 def load_images(image_paths: List[str]) -> List[Image.Image]:
     imgs: List[Image.Image] = []
     for p in image_paths:
-        path = Path(p)
+        path = ROOT / p
         img = Image.open(path).convert("RGB")
         imgs.append(img)
     return imgs

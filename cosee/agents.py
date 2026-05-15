@@ -337,11 +337,8 @@ class QwenAgent(Agent):
 
         use_final_answer = self.allow_final_answer and step >= self.final_answer_step
 
-        if use_final_answer:
-            # For chartqapro scanner, never produce final answers
-            if self.dataset == "chartqapro" and self.role == "scanner":
-                use_final_answer = False
-
+        # For chartqapro scanner, never produce final answers.
+        if use_final_answer and not (self.dataset == "chartqapro" and self.role == "scanner"):
             prompt = self._build_final_answer_prompt(
                 question=question,
                 board_text=board_text,
@@ -352,6 +349,7 @@ class QwenAgent(Agent):
                 question=prompt,
                 board_text=board_text,
                 role_prompt=self.role_prompt,
+                dataset=self.dataset,
                 **gen_kwargs,
             )
             answer_text = (answer_text or "").strip()
@@ -373,6 +371,7 @@ class QwenAgent(Agent):
             question=prompt,
             board_text=board_text,
             role_prompt=self.role_prompt,
+            dataset=self.dataset,
             **gen_kwargs,
         )
         note_text = (note_text or "").strip()

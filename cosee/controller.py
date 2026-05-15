@@ -22,6 +22,10 @@ class CoSeeController:
         agents: List[Agent],
         max_steps: int = 4,
     ) -> None:
+        if not agents:
+            raise ValueError("CoSeeController requires at least one agent.")
+        if max_steps < 1:
+            raise ValueError("max_steps must be >= 1.")
         self.agents = agents
         self.max_steps = max_steps
 
@@ -79,7 +83,7 @@ class CoSeeController:
         """
         if has_final_answer:
             return True
-        return step >= max_steps
+        return step + 1 >= max_steps
 
     def decide_final_answer(
         self,
@@ -123,7 +127,7 @@ class CoSeeController:
         step = 0
         num_agents = len(self.agents)
 
-        while True:
+        while step < self.max_steps:
             agent_idx = step % num_agents
             agent = self.agents[agent_idx]
 

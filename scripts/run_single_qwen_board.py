@@ -34,7 +34,7 @@ import torch
 from cosee.agents import QwenAgent
 from cosee.board import Board
 from cosee.controller import CoSeeController
-from cosee.data.datasets import load_toy_split
+from cosee.data.datasets import ROOT, load_toy_split
 from cosee.metrics import compute_vqaonline_f1
 from cosee.models.qwen_vl_wrapper import QwenVLClient
 
@@ -226,11 +226,16 @@ def main() -> None:
             f"[RESUME] Found {n_done} existing results in {resume_path}. {len(existing_ids)} unique example ids."
         )
 
-    examples = load_toy_split(
-        dataset=args.dataset,
-        split=split,
-        max_examples=None if args.only_ids else args.max_examples,
-    )
+    try:
+        examples = load_toy_split(
+            dataset=args.dataset,
+            split=split,
+            max_examples=None if args.only_ids else args.max_examples,
+        )
+    except FileNotFoundError as e:
+        print(f"[ERROR] {e}")
+        print("Hint: export the requested dataset first with one of the scripts/export_* helpers.")
+        return
     if args.only_ids:
         only_ids = read_only_ids(args.only_ids)
         id_to_ex = {ex.id: ex for ex in examples}
@@ -307,7 +312,7 @@ def main() -> None:
                 if ex.id in existing_ids:
                     continue
 
-                images = [Image.open(Path(p)).convert("RGB") for p in ex.image_paths]
+                images = [Image.open(ROOT / p).convert("RGB") for p in ex.image_paths]
                 meta = getattr(ex, "meta", {}) or {}
                 question_input = build_input_text_for_example(ex)
 

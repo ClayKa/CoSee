@@ -196,6 +196,7 @@ def build_controller(
     qwen_client: QwenVLClient,
     max_steps: int,
     config_name: str,
+    dataset: str,
     max_new_tokens: int,
     temperature: float,
     top_p: float,
@@ -220,11 +221,19 @@ def build_controller(
         "to the question. Use the board as your evidence; do not restate all notes, just answer."
     )
 
-    def qwen_agent(name: str, prompt: str, allow_final: bool, final_step: int = 1) -> QwenAgent:
+    def qwen_agent(
+        name: str,
+        prompt: str,
+        allow_final: bool,
+        role: str,
+        final_step: int = 1,
+    ) -> QwenAgent:
         return QwenAgent(
             name=name,
             role_prompt=prompt,
             qwen_client=qwen_client,
+            role=role,
+            dataset=dataset,
             allow_final_answer=allow_final,
             final_answer_step=final_step,
             default_gen_kwargs={
@@ -235,18 +244,30 @@ def build_controller(
         )
 
     if config_name == "single_qwen_board":
-        agent = qwen_agent("QwenSingle", ROLE_PROMPT_SINGLE, allow_final=True, final_step=1)
+        agent = qwen_agent("QwenSingle", ROLE_PROMPT_SINGLE, allow_final=True, role="scanner", final_step=1)
         return CoSeeController(agents=[agent], max_steps=max_steps)
 
     if config_name == "two_qwen":
-        scanner = qwen_agent("QwenScanner", ROLE_PROMPT_SCANNER, allow_final=False)
-        cross_checker = qwen_agent("QwenCrossChecker", ROLE_PROMPT_CROSSCHECKER, allow_final=True, final_step=0)
+        scanner = qwen_agent("QwenScanner", ROLE_PROMPT_SCANNER, allow_final=False, role="scanner")
+        cross_checker = qwen_agent(
+            "QwenCrossChecker",
+            ROLE_PROMPT_CROSSCHECKER,
+            allow_final=True,
+            role="cross_checker",
+            final_step=1,
+        )
         return CoSeeController(agents=[scanner, cross_checker], max_steps=max_steps)
 
     if config_name == "three_qwen":
-        scanner = qwen_agent("QwenScanner", ROLE_PROMPT_SCANNER, allow_final=False)
-        detail = qwen_agent("QwenDetailReader", ROLE_PROMPT_DETAIL, allow_final=False)
-        cross_checker = qwen_agent("QwenCrossChecker", ROLE_PROMPT_CROSSCHECKER, allow_final=True, final_step=1)
+        scanner = qwen_agent("QwenScanner", ROLE_PROMPT_SCANNER, allow_final=False, role="scanner")
+        detail = qwen_agent("QwenDetailReader", ROLE_PROMPT_DETAIL, allow_final=False, role="detail_reader")
+        cross_checker = qwen_agent(
+            "QwenCrossChecker",
+            ROLE_PROMPT_CROSSCHECKER,
+            allow_final=True,
+            role="cross_checker",
+            final_step=2,
+        )
         return CoSeeController(agents=[scanner, detail, cross_checker], max_steps=max_steps)
 
     raise ValueError(f"Unknown agent configuration: {config_name}")
@@ -318,11 +339,16 @@ def main() -> None:
             f"{len(existing_ids)} unique example ids."
         )
 
-    examples = load_toy_split(
-        dataset=args.dataset,
-        split=split,
-        max_examples=None if args.only_ids else args.max_examples,
-    )
+    try:
+        examples = load_toy_split(
+            dataset=args.dataset,
+            split=split,
+            max_examples=None if args.only_ids else args.max_examples,
+        )
+    except FileNotFoundError as e:
+        print(f"[ERROR] {e}")
+        print("Hint: export the requested dataset first with one of the scripts/export_* helpers.")
+        return
     if args.only_ids:
         only_ids = read_only_ids(args.only_ids)
         id_to_ex = {ex.id: ex for ex in examples}
@@ -380,6 +406,7 @@ def main() -> None:
         qwen_client=qwen_client,
         max_steps=args.max_steps,
         config_name=args.agent_config,
+        dataset=args.dataset,
         max_new_tokens=args.max_new_tokens,
         temperature=args.temperature,
         top_p=args.top_p,
